@@ -1,28 +1,35 @@
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
-const User = require("../models/User");
+const User = require("../models/user");
 const { cloudinary } = require("../config/cloudinary");
 
 const register = async (req, res) => {
   try {
-    const { username, email, password } = req.body;
+    const { name, email, password } = req.body;
 
-    if (!username || !email || !password) {
+    if (!name || !email || !password) {
       return res.status(400).json({ error: "Todos los campos son obligatorios" });
+    }
+
+    if (password.length < 6) {
+      return res.status(400).json({ error: "La contraseña debe tener al menos 6 caracteres" });
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    const newUser = await User.create({
-      username,
+    const user = await User.create({
+      name,
       email,
       password: hashedPassword,
-      role: "user",
       image: req.file?.path,
+      imagePublicId: req.file?.filename,
     });
 
-    newUser.password = undefined;
-    res.status(201).json(newUser);
+    // Devuelve el usuario sin la contraseña
+    const userResponse = user.toObject();
+    delete userResponse.password;
+
+    res.status(201).json(userResponse);
   } catch (error) {
     if (error.code === 11000) {
       return res.status(400).json({ error: "Ese email ya está registrado" });
@@ -47,8 +54,10 @@ const login = async (req, res) => {
 
     const token = jwt.sign({ _id: user._id }, process.env.JWT_SECRET, { expiresIn: "7d" });
 
-    user.password = undefined;
-    res.json({ token, user });
+    const userResponse = user.toObject();
+    delete userResponse.password;
+
+    res.json({ token, user: userResponse });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -56,13 +65,14 @@ const login = async (req, res) => {
 
 const getProfile = async (req, res) => {
   try {
-    const user = await User.findById(req.user._id).select("-password").populate("favorites");
+    const user = await User.findById(req.user._id).select("-password").populate("favorite_movies");
     res.json(user);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 };
 
+// funcion para actualizar el rol de un usuario, solo accesible por admins.
 const updateRole = async (req, res) => {
   try {
     const { role } = req.body;
@@ -90,9 +100,9 @@ const addFavorite = async (req, res) => {
     // $addToSet evita duplicados automáticamente
     const user = await User.findByIdAndUpdate(
       req.user._id,
-      { $addToSet: { favorites: req.params.idData } },
+      { $addToSet: { favorite_movies: req.params.idData } },
       { new: true }
-    ).select("-password").populate("favorites");
+    ).select("-password").populate("favorite_movies");
 
     res.json(user);
   } catch (error) {
@@ -104,9 +114,9 @@ const removeFavorite = async (req, res) => {
   try {
     const user = await User.findByIdAndUpdate(
       req.user._id,
-      { $pull: { favorites: req.params.idData } },
+      { $pull: { favorite_movies: req.params.idData } },
       { new: true }
-    ).select("-password").populate("favorites");
+    ).select("-password").populate("favorite_movies");
 
     res.json(user);
   } catch (error) {
@@ -117,26 +127,24 @@ const removeFavorite = async (req, res) => {
 const deleteUser = async (req, res) => {
   try {
     const { id } = req.params;
+    const requesterId = req.user._id.toString();
+    const isAdmin = req.user.role === "admin";
 
-    const esMiCuenta = req.user._id.toString() === id;
-    const esAdmin = req.user.role === "admin";
-
-    if (!esMiCuenta && !esAdmin) {
+    // Un usuario solo puede borrar su propia cuenta (o un admin cualquiera)
+    if (requesterId !== id && !isAdmin) {
       return res.status(403).json({ error: "No tienes permiso para borrar esta cuenta" });
     }
 
     const user = await User.findById(id);
     if (!user) return res.status(404).json({ error: "Usuario no encontrado" });
 
-    // si tiene imagen la borramos también de cloudinary
-    if (user.image) {
-      const publicId = "backend-users/" + user.image.split("/").pop().split(".")[0];
-      await cloudinary.uploader.destroy(publicId);
+    if (user.imagePublicId) {
+      await cloudinary.uploader.destroy(user.imagePublicId);
     }
 
-    await User.findByIdAndDelete(id);
+    await user.deleteOne();
 
-    res.json({ message: "Cuenta eliminada" });
+    res.json({ message: "Cuenta eliminada correctamente" });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
