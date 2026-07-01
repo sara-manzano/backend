@@ -38,7 +38,7 @@ const createMovie = async (req, res) => {
 const updateMovie = async (req, res) => {
   try {
     const movie = await Movie.findByIdAndUpdate(req.params.id, req.body, {
-      new: true,
+      returnDocument: "after",
       runValidators: true,
     });
     if (!movie) return res.status(404).json({ error: "Película no encontrada" });

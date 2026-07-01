@@ -84,7 +84,7 @@ const updateRole = async (req, res) => {
     const user = await User.findByIdAndUpdate(
       req.params.id,
       { role },
-      { new: true, runValidators: true }
+      { returnDocument: "after", runValidators: true }
     ).select("-password");
 
     if (!user) return res.status(404).json({ error: "Usuario no encontrado" });
@@ -101,7 +101,7 @@ const addFavorite = async (req, res) => {
     const user = await User.findByIdAndUpdate(
       req.user._id,
       { $addToSet: { favorite_movies: req.params.idData } },
-      { new: true }
+      { returnDocument: "after" }
     ).select("-password").populate("favorite_movies");
 
     res.json(user);
@@ -115,7 +115,7 @@ const removeFavorite = async (req, res) => {
     const user = await User.findByIdAndUpdate(
       req.user._id,
       { $pull: { favorite_movies: req.params.idData } },
-      { new: true }
+      { returnDocument: "after" }
     ).select("-password").populate("favorite_movies");
 
     res.json(user);

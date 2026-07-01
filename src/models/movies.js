@@ -3,6 +3,7 @@ const mongoose = require("mongoose");
 const movieSchema = new mongoose.Schema(
   {
     plot: { type: String },
+    fullplot: { type: String },
     genres: [{ type: String }],
     runtime: { type: Number },
     cast: [{ type: String }],
