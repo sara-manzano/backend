@@ -19,7 +19,6 @@ router.put("/users/add-favorite/:idData", isAuth, addFavorite);
 router.delete("/users/remove-favorite/:idData", isAuth, removeFavorite);
 router.delete("/users/:id", isAuth, deleteUser);
 
-//admin
 router.put("/users/:id/role", isAuth, isAdmin, updateRole);
 
 module.exports = router;

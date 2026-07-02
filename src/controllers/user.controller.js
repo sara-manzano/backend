@@ -3,20 +3,31 @@ const jwt = require("jsonwebtoken");
 const User = require("../models/user");
 const { cloudinary } = require("../config/cloudinary");
 
-const register = async (req, res) => {
+const VALID_ROLES = ["user", "admin"];
+
+const withoutPassword = (mongooseDoc) => {
+  const obj = mongooseDoc.toObject();
+  delete obj.password;
+  return obj;
+};
+
+const updateFavorites = (userId, operation) =>
+  User.findByIdAndUpdate(userId, operation, { new: true })
+    .select("-password")
+    .populate("favorite_movies");
+
+const register = async (req, res, next) => {
   try {
     const { name, email, password } = req.body;
 
     if (!name || !email || !password) {
       return res.status(400).json({ error: "Todos los campos son obligatorios" });
     }
-
     if (password.length < 6) {
       return res.status(400).json({ error: "La contraseña debe tener al menos 6 caracteres" });
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
-
     const user = await User.create({
       name,
       email,
@@ -25,20 +36,16 @@ const register = async (req, res) => {
       imagePublicId: req.file?.filename,
     });
 
-    // Devuelve el usuario sin la contraseña
-    const userResponse = user.toObject();
-    delete userResponse.password;
-
-    res.status(201).json(userResponse);
+    res.status(201).json(withoutPassword(user));
   } catch (error) {
     if (error.code === 11000) {
       return res.status(400).json({ error: "Ese email ya está registrado" });
     }
-    res.status(500).json({ error: error.message });
+    next(error);
   }
 };
 
-const login = async (req, res) => {
+const login = async (req, res, next) => {
   try {
     const { email, password } = req.body;
 
@@ -49,89 +56,78 @@ const login = async (req, res) => {
     const user = await User.findOne({ email });
     if (!user) return res.status(401).json({ error: "Credenciales incorrectas" });
 
-    const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) return res.status(401).json({ error: "Credenciales incorrectas" });
+    const passwordIsCorrect = await bcrypt.compare(password, user.password);
+    if (!passwordIsCorrect) return res.status(401).json({ error: "Credenciales incorrectas" });
 
-    const token = jwt.sign({ _id: user._id }, process.env.JWT_SECRET, { expiresIn: "7d" });
+    const token = jwt.sign({ _id: user._id }, process.env.JWT_SECRET, { expiresIn: "30d" });
 
-    const userResponse = user.toObject();
-    delete userResponse.password;
-
-    res.json({ token, user: userResponse });
+    res.json({ token, user: withoutPassword(user) });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    next(error);
   }
 };
 
-const getProfile = async (req, res) => {
+const getProfile = async (req, res, next) => {
   try {
     const user = await User.findById(req.user._id).select("-password").populate("favorite_movies");
     res.json(user);
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    next(error);
   }
 };
 
-// funcion para actualizar el rol de un usuario, solo accesible por admins.
-const updateRole = async (req, res) => {
+const updateRole = async (req, res, next) => {
   try {
     const { role } = req.body;
 
-    if (!role || !["user", "admin"].includes(role)) {
+    if (!VALID_ROLES.includes(role)) {
       return res.status(400).json({ error: "El rol debe ser 'user' o 'admin'" });
+    }
+
+    const isChangingOwnRole = req.user._id.toString() === req.params.id;
+    if (isChangingOwnRole) {
+      return res.status(403).json({ error: "No puedes cambiar tu propio rol" });
     }
 
     const user = await User.findByIdAndUpdate(
       req.params.id,
       { role },
-      { returnDocument: "after", runValidators: true }
+      { new: true, runValidators: true }
     ).select("-password");
 
     if (!user) return res.status(404).json({ error: "Usuario no encontrado" });
 
     res.json(user);
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    next(error);
   }
 };
 
-const addFavorite = async (req, res) => {
+const addFavorite = async (req, res, next) => {
   try {
-    // $addToSet evita duplicados automáticamente
-    const user = await User.findByIdAndUpdate(
-      req.user._id,
-      { $addToSet: { favorite_movies: req.params.idData } },
-      { returnDocument: "after" }
-    ).select("-password").populate("favorite_movies");
-
+    const user = await updateFavorites(req.user._id, { $addToSet: { favorite_movies: req.params.idData } });
     res.json(user);
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    next(error);
   }
 };
 
-const removeFavorite = async (req, res) => {
+const removeFavorite = async (req, res, next) => {
   try {
-    const user = await User.findByIdAndUpdate(
-      req.user._id,
-      { $pull: { favorite_movies: req.params.idData } },
-      { returnDocument: "after" }
-    ).select("-password").populate("favorite_movies");
-
+    const user = await updateFavorites(req.user._id, { $pull: { favorite_movies: req.params.idData } });
     res.json(user);
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    next(error);
   }
 };
 
-const deleteUser = async (req, res) => {
+const deleteUser = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const requesterId = req.user._id.toString();
+    const isDeletingOwnAccount = req.user._id.toString() === id;
     const isAdmin = req.user.role === "admin";
 
-    // Un usuario solo puede borrar su propia cuenta (o un admin cualquiera)
-    if (requesterId !== id && !isAdmin) {
+    if (!isDeletingOwnAccount && !isAdmin) {
       return res.status(403).json({ error: "No tienes permiso para borrar esta cuenta" });
     }
 
@@ -143,11 +139,11 @@ const deleteUser = async (req, res) => {
     }
 
     await user.deleteOne();
-
     res.json({ message: "Cuenta eliminada correctamente" });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    next(error);
   }
 };
 
 module.exports = { register, login, getProfile, updateRole, addFavorite, removeFavorite, deleteUser };
+

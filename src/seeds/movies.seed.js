@@ -180,7 +180,7 @@ const seed = async () => {
     ];
 
     await Movie.insertMany(data);
-    console.log("12 películas insertadas correctamente");
+    console.log(`${data.length} películas insertadas correctamente`);
 
     await mongoose.connection.close();
     process.exit(0);
