@@ -104,6 +104,9 @@ const updateUser = async (req, res, next) => {
     await user.save();
     res.json(withoutPassword(user));
   } catch (error) {
+    if (error.code === 11000) {
+      return res.status(400).json({ error: "Ese email ya está registrado" });
+    }
     next(error);
   }
 };
