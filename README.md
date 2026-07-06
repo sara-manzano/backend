@@ -1,25 +1,15 @@
 # Backend
 
-API REST para gestionar películas y usuarios, con autenticación, roles y subida de imágenes. Hecha con Node.js, Express y MongoDB Atlas.
+API REST de películas y usuarios. Tiene registro/login con JWT, dos roles (user y admin), favoritos y subida de imagen de perfil a Cloudinary.
 
-## ¿Qué hace?
-
-- Los usuarios se pueden registrar, iniciar sesión y guardar películas como favoritas
-- Hay dos roles: `user` (usuario normal) y `admin` (puede crear, editar y borrar películas, y gestionar otros usuarios)
-- Las imágenes de perfil se suben a Cloudinary y se eliminan automáticamente si el usuario borra su cuenta
-- Los favoritos no se duplican aunque añadas la misma película varias veces
-
-## Tecnologías usadas
+## Stack
 
 - Node.js + Express
 - MongoDB Atlas + Mongoose
 - Cloudinary + Multer
 - bcrypt + JWT
-- dotenv + cors
 
-## Cómo arrancarlo
-
-Primero clona el repo e instala las dependencias:
+## Instalación
 
 ```bash
 git clone https://github.com/sara-manzano/backend.git
@@ -27,7 +17,7 @@ cd backend
 npm install
 ```
 
-Crea un `.env` en la raíz con esto:
+Crea un `.env` en la raíz:
 
 ```env
 PORT=3000
@@ -38,120 +28,51 @@ CLOUDINARY_API_SECRET=tu_api_secret
 JWT_SECRET=una_cadena_secreta_cualquiera
 ```
 
-Para meter datos de prueba (12 películas):
+Si quieres cargar películas de prueba:
 
 ```bash
 npm run seed
 ```
 
-Para arrancar en desarrollo:
+Para arrancar:
 
 ```bash
 npm run dev
 ```
 
-El servidor arranca en `http://localhost:3000`.
-
----
-
-## Estructura del proyecto
-
-```
-src/
-├── config/
-│   ├── cloudinary.js   # configuración de Cloudinary y multer
-│   └── db.js           # conexión a MongoDB
-├── controllers/
-│   ├── movies.controller.js
-│   └── user.controller.js
-├── middlewares/
-│   ├── auth.js         # isAuth e isAdmin
-│   └── file.js         # uploadImage con multer
-├── models/
-│   ├── movies.js
-│   └── user.js
-├── routes/
-│   ├── movies.routes.js
-│   └── user.routes.js
-├── seeds/
-│   └── movies.seed.js
-└── server.js
-```
-
----
-
 ## Rutas
 
-Para las rutas que requieren autenticación, hay que enviar el token en el header:
+Las rutas protegidas necesitan el token en el header:
 
 ```
 Authorization: Bearer <token>
 ```
-
-El token lo obtienes al hacer login.
 
 ### Usuarios
 
-| Método | Ruta | ¿Necesita token? | Qué hace |
-|--------|------|-----------------|----------|
-| POST | `/api/register` | No | Crea una cuenta. Para subir foto de perfil usa `multipart/form-data`. El rol siempre será `user`. |
-| POST | `/api/login` | No | Inicia sesión. Devuelve un token y los datos del usuario. |
-| GET | `/api/users/profile` | Sí | Devuelve el perfil del usuario logueado con sus favoritos. |
-| PUT | `/api/users/add-favorite/:idData` | Sí | Añade una película a favoritos. Si ya estaba, no la duplica. |
-| DELETE | `/api/users/remove-favorite/:idData` | Sí | Quita una película de favoritos. |
-| DELETE | `/api/users/:id` | Sí | Borra una cuenta. Cada usuario puede borrar la suya; los admins pueden borrar cualquiera. Al borrar, se elimina también la imagen de Cloudinary. |
-| PUT | `/api/users/:id/role` | Solo admins | Cambia el rol de un usuario a `"user"` o `"admin"`. |
+| Método | Ruta | Auth | Descripción |
+|--------|------|------|-------------|
+| POST | `/api/register` | — | Registro. Acepta `multipart/form-data` si quieres subir foto. |
+| POST | `/api/login` | — | Login. Devuelve token + datos del usuario. |
+| GET | `/api/users/profile` | token | Perfil del usuario logueado con sus favoritos. |
+| PUT | `/api/users/:id` | token | Actualiza nombre, email o imagen de perfil. |
+| PUT | `/api/users/add-favorite/:idData` | token | Añade una película a favoritos (sin duplicados). |
+| DELETE | `/api/users/remove-favorite/:idData` | token | Quita una película de favoritos. |
+| DELETE | `/api/users/:id` | token | Borra cuenta. Cada usuario puede borrar la suya; los admins pueden borrar cualquiera. |
+| PUT | `/api/users/:id/role` | admin | Cambia el rol de un usuario (`"user"` o `"admin"`). |
 
 ### Películas
 
-| Método | Ruta | ¿Necesita token? | Qué hace |
-|--------|------|-----------------|----------|
-| GET | `/api/movies` | No | Lista todas las películas. |
-| GET | `/api/movies/:id` | No | Devuelve una película por su ID. |
-| POST | `/api/movies` | Solo admins | Crea una película. El único campo obligatorio es `title`. |
-| PUT | `/api/movies/:id` | Solo admins | Actualiza una película. |
-| DELETE | `/api/movies/:id` | Solo admins | Elimina una película. |
+| Método | Ruta | Auth | Descripción |
+|--------|------|------|-------------|
+| GET | `/api/movies` | — | Lista películas. Paginación: `?page=1&limit=20`. |
+| GET | `/api/movies/:id` | — | Una película por ID. |
+| POST | `/api/movies` | admin | Crea película. Solo `title` es obligatorio. |
+| PUT | `/api/movies/:id` | admin | Actualiza película. |
+| DELETE | `/api/movies/:id` | admin | Elimina película. |
 
----
+## Notas
 
-## Ejemplo de uso
-
-**1. Registrarse:**
-```bash
-POST /api/register
-Content-Type: application/json
-
-{
-  "name": "Sara",
-  "email": "sara@example.com",
-  "password": "123456"
-}
-```
-
-**2. Iniciar sesión y guardar el token:**
-```bash
-POST /api/login
-Content-Type: application/json
-
-{
-  "email": "sara@example.com",
-  "password": "123456"
-}
-```
-
-**3. Añadir una película a favoritos:**
-```bash
-PUT /api/users/add-favorite/<id_de_la_pelicula>
-Authorization: Bearer <token>
-```
-
----
-
-## Cosas a tener en cuenta
-
-- El primer admin hay que crearlo a mano desde MongoDB Atlas, cambiando el campo `role` a `"admin"` en el documento del usuario.
-- Las imágenes se suben a la carpeta `backend-users` de Cloudinary.
-- La contraseña mínima es de 6 caracteres.
-- Los tokens caducan a los 7 días.
-
-
+- El primer admin hay que crearlo a mano desde MongoDB cambiando el campo `role` a `"admin"`.
+- Las imágenes se guardan en la carpeta `backend-users` de Cloudinary y se borran automáticamente si el usuario elimina su cuenta.
+- Los tokens caducan a los 30 días.

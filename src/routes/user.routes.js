@@ -3,6 +3,7 @@ const {
   register,
   login,
   getProfile,
+  updateUser,
   updateRole,
   addFavorite,
   removeFavorite,
@@ -15,6 +16,7 @@ router.post("/register", uploadImage, register);
 router.post("/login", login);
 
 router.get("/users/profile", isAuth, getProfile);
+router.put("/users/:id", isAuth, uploadImage, updateUser);
 router.put("/users/add-favorite/:idData", isAuth, addFavorite);
 router.delete("/users/remove-favorite/:idData", isAuth, removeFavorite);
 router.delete("/users/:id", isAuth, deleteUser);

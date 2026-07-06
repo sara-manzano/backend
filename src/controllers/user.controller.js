@@ -6,9 +6,8 @@ const { cloudinary } = require("../config/cloudinary");
 const VALID_ROLES = ["user", "admin"];
 
 const withoutPassword = (mongooseDoc) => {
-  const obj = mongooseDoc.toObject();
-  delete obj.password;
-  return obj;
+  const { password, ...rest } = mongooseDoc.toObject();
+  return rest;
 };
 
 const updateFavorites = (userId, operation) =>
@@ -20,8 +19,9 @@ const register = async (req, res, next) => {
   try {
     const { name, email, password } = req.body;
 
-    if (!name || !email || !password) {
-      return res.status(400).json({ error: "Todos los campos son obligatorios" });
+    const missingFields = ["name", "email", "password"].filter((f) => !req.body[f]);
+    if (missingFields.length > 0) {
+      return res.status(400).json({ error: `Faltan los siguientes campos: ${missingFields.join(", ")}` });
     }
     if (password.length < 6) {
       return res.status(400).json({ error: "La contraseña debe tener al menos 6 caracteres" });
@@ -71,6 +71,38 @@ const getProfile = async (req, res, next) => {
   try {
     const user = await User.findById(req.user._id).select("-password").populate("favorite_movies");
     res.json(user);
+  } catch (error) {
+    next(error);
+  }
+};
+
+const updateUser = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const isOwner = req.user._id.toString() === id;
+    const isAdmin = req.user.role === "admin";
+
+    if (!isOwner && !isAdmin) {
+      return res.status(403).json({ error: "No tienes permiso para editar esta cuenta" });
+    }
+
+    const user = await User.findById(id);
+    if (!user) return res.status(404).json({ error: "Usuario no encontrado" });
+
+    const { name, email } = req.body;
+    if (name) user.name = name;
+    if (email) user.email = email;
+
+    if (req.file) {
+      if (user.imagePublicId) {
+        await cloudinary.uploader.destroy(user.imagePublicId);
+      }
+      user.image = req.file.path;
+      user.imagePublicId = req.file.filename;
+    }
+
+    await user.save();
+    res.json(withoutPassword(user));
   } catch (error) {
     next(error);
   }
@@ -145,5 +177,5 @@ const deleteUser = async (req, res, next) => {
   }
 };
 
-module.exports = { register, login, getProfile, updateRole, addFavorite, removeFavorite, deleteUser };
+module.exports = { register, login, getProfile, updateUser, updateRole, addFavorite, removeFavorite, deleteUser };
 
