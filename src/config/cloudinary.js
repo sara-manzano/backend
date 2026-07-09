@@ -25,9 +25,6 @@ class CloudinaryStorage {
     file.stream.pipe(uploadStream);
   }
 
-  _removeFile(req, file, cb) {
-    cloudinary.uploader.destroy(file.filename, cb);
-  }
 }
 
 const fileFilter = (req, file, cb) => {

@@ -1,6 +1,7 @@
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const User = require("../models/user");
+const Movie = require("../models/movies");
 const { cloudinary } = require("../config/cloudinary");
 
 const VALID_ROLES = ["user", "admin"];
@@ -10,10 +11,12 @@ const withoutPassword = (mongooseDoc) => {
   return rest;
 };
 
-const updateFavorites = (userId, operation) =>
-  User.findByIdAndUpdate(userId, operation, { new: true })
-    .select("-password")
-    .populate("favorite_movies");
+const isOwnerOrAdmin = (req, id) =>
+  req.user._id.toString() === id || req.user.role === "admin";
+
+const deleteFromCloudinary = async (publicId) => {
+  if (publicId) await cloudinary.uploader.destroy(publicId);
+};
 
 const register = async (req, res, next) => {
   try {
@@ -21,9 +24,11 @@ const register = async (req, res, next) => {
 
     const missingFields = ["name", "email", "password"].filter((f) => !req.body[f]);
     if (missingFields.length > 0) {
+      await deleteFromCloudinary(req.file?.filename);
       return res.status(400).json({ error: `Faltan los siguientes campos: ${missingFields.join(", ")}` });
     }
     if (password.length < 6) {
+      await deleteFromCloudinary(req.file?.filename);
       return res.status(400).json({ error: "La contraseña debe tener al menos 6 caracteres" });
     }
 
@@ -38,6 +43,7 @@ const register = async (req, res, next) => {
 
     res.status(201).json(withoutPassword(user));
   } catch (error) {
+    await deleteFromCloudinary(req.file?.filename);
     if (error.code === 11000) {
       return res.status(400).json({ error: "Ese email ya está registrado" });
     }
@@ -79,24 +85,24 @@ const getProfile = async (req, res, next) => {
 const updateUser = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const isOwner = req.user._id.toString() === id;
-    const isAdmin = req.user.role === "admin";
 
-    if (!isOwner && !isAdmin) {
+    if (!isOwnerOrAdmin(req, id)) {
+      await deleteFromCloudinary(req.file?.filename);
       return res.status(403).json({ error: "No tienes permiso para editar esta cuenta" });
     }
 
     const user = await User.findById(id);
-    if (!user) return res.status(404).json({ error: "Usuario no encontrado" });
+    if (!user) {
+      await deleteFromCloudinary(req.file?.filename);
+      return res.status(404).json({ error: "Usuario no encontrado" });
+    }
 
     const { name, email } = req.body;
     if (name) user.name = name;
     if (email) user.email = email;
 
     if (req.file) {
-      if (user.imagePublicId) {
-        await cloudinary.uploader.destroy(user.imagePublicId);
-      }
+      await deleteFromCloudinary(user.imagePublicId);
       user.image = req.file.path;
       user.imagePublicId = req.file.filename;
     }
@@ -104,6 +110,7 @@ const updateUser = async (req, res, next) => {
     await user.save();
     res.json(withoutPassword(user));
   } catch (error) {
+    await deleteFromCloudinary(req.file?.filename);
     if (error.code === 11000) {
       return res.status(400).json({ error: "Ese email ya está registrado" });
     }
@@ -140,7 +147,15 @@ const updateRole = async (req, res, next) => {
 
 const addFavorite = async (req, res, next) => {
   try {
-    const user = await updateFavorites(req.user._id, { $addToSet: { favorite_movies: req.params.idData } });
+    const movie = await Movie.findById(req.params.idData);
+    if (!movie) return res.status(404).json({ error: "Película no encontrada" });
+
+    const user = await User.findByIdAndUpdate(
+      req.user._id,
+      { $addToSet: { favorite_movies: req.params.idData } },
+      { new: true }
+    ).select("-password").populate("favorite_movies");
+
     res.json(user);
   } catch (error) {
     next(error);
@@ -149,7 +164,12 @@ const addFavorite = async (req, res, next) => {
 
 const removeFavorite = async (req, res, next) => {
   try {
-    const user = await updateFavorites(req.user._id, { $pull: { favorite_movies: req.params.idData } });
+    const user = await User.findByIdAndUpdate(
+      req.user._id,
+      { $pull: { favorite_movies: req.params.idData } },
+      { new: true }
+    ).select("-password").populate("favorite_movies");
+
     res.json(user);
   } catch (error) {
     next(error);
@@ -159,19 +179,15 @@ const removeFavorite = async (req, res, next) => {
 const deleteUser = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const isDeletingOwnAccount = req.user._id.toString() === id;
-    const isAdmin = req.user.role === "admin";
 
-    if (!isDeletingOwnAccount && !isAdmin) {
+    if (!isOwnerOrAdmin(req, id)) {
       return res.status(403).json({ error: "No tienes permiso para borrar esta cuenta" });
     }
 
     const user = await User.findById(id);
     if (!user) return res.status(404).json({ error: "Usuario no encontrado" });
 
-    if (user.imagePublicId) {
-      await cloudinary.uploader.destroy(user.imagePublicId);
-    }
+    await deleteFromCloudinary(user.imagePublicId);
 
     await user.deleteOne();
     res.json({ message: "Cuenta eliminada correctamente" });
