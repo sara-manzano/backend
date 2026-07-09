@@ -34,6 +34,12 @@ Si quieres cargar películas de prueba:
 npm run seed
 ```
 
+Para crear el primer admin:
+
+```bash
+node src/seeds/admin.seed.js
+```
+
 Para arrancar:
 
 ```bash
@@ -54,6 +60,7 @@ Authorization: Bearer <token>
 |--------|------|------|-------------|
 | POST | `/api/register` | — | Registro. Acepta `multipart/form-data` si quieres subir foto. |
 | POST | `/api/login` | — | Login. Devuelve token + datos del usuario. |
+| GET | `/api/users` | admin | Lista todos los usuarios. Paginación: `?page=1&limit=20`. |
 | GET | `/api/users/profile` | token | Perfil del usuario logueado con sus favoritos. |
 | PUT | `/api/users/:id` | token | Actualiza nombre, email o imagen de perfil. |
 | PUT | `/api/users/add-favorite/:idData` | token | Añade una película a favoritos (sin duplicados). |
@@ -73,6 +80,6 @@ Authorization: Bearer <token>
 
 ## Notas
 
-- El primer admin hay que crearlo a mano desde MongoDB cambiando el campo `role` a `"admin"`.
-- Las imágenes se guardan en la carpeta `backend-users` de Cloudinary y se borran automáticamente si el usuario elimina su cuenta.
+- Las imágenes de perfil se suben a Cloudinary y se eliminan automáticamente al actualizar o borrar la cuenta.
 - Los tokens caducan a los 30 días.
+- El `.env` nunca se sube al repositorio. Usa `.env` como plantilla para configurar tu entorno.

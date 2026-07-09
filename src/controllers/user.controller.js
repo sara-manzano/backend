@@ -73,6 +73,26 @@ const login = async (req, res, next) => {
   }
 };
 
+const DEFAULT_PAGE = 1;
+const DEFAULT_LIMIT = 20;
+
+const getAllUsers = async (req, res, next) => {
+  try {
+    const page = Math.max(parseInt(req.query.page) || DEFAULT_PAGE, 1);
+    const limit = Math.min(parseInt(req.query.limit) || DEFAULT_LIMIT, 100);
+    const skip = (page - 1) * limit;
+
+    const [users, total] = await Promise.all([
+      User.find().select("-password").skip(skip).limit(limit),
+      User.countDocuments(),
+    ]);
+
+    res.json({ data: users, page, limit, total, pages: Math.ceil(total / limit) });
+  } catch (error) {
+    next(error);
+  }
+};
+
 const getProfile = async (req, res, next) => {
   try {
     const user = await User.findById(req.user._id).select("-password").populate("favorite_movies");
@@ -196,5 +216,5 @@ const deleteUser = async (req, res, next) => {
   }
 };
 
-module.exports = { register, login, getProfile, updateUser, updateRole, addFavorite, removeFavorite, deleteUser };
+module.exports = { register, login, getAllUsers, getProfile, updateUser, updateRole, addFavorite, removeFavorite, deleteUser };
 
