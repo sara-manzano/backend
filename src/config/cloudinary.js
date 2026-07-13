@@ -13,6 +13,10 @@ const ALLOWED_FORMATS = {
   "image/webp": "webp",
 };
 
+const removeFromCloudinary = async (publicId) => {
+  if (publicId) await cloudinary.uploader.destroy(publicId);
+};
+
 class CloudinaryStorage {
   _handleFile(req, file, cb) {
     const uploadStream = cloudinary.uploader.upload_stream(
@@ -25,6 +29,9 @@ class CloudinaryStorage {
     file.stream.pipe(uploadStream);
   }
 
+  _removeFile(req, file, cb) {
+    removeFromCloudinary(file.filename).then(() => cb(null)).catch(cb);
+  }
 }
 
 const fileFilter = (req, file, cb) => {
@@ -41,5 +48,5 @@ const upload = multer({
   fileFilter,
 });
 
-module.exports = { cloudinary, upload };
+module.exports = { cloudinary, upload, removeFromCloudinary };
 

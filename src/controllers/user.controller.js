@@ -2,7 +2,7 @@ const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const User = require("../models/user");
 const Movie = require("../models/movies");
-const { cloudinary } = require("../config/cloudinary");
+const { removeFromCloudinary } = require("../config/cloudinary");
 
 const VALID_ROLES = ["user", "admin"];
 
@@ -14,21 +14,17 @@ const withoutPassword = (mongooseDoc) => {
 const isOwnerOrAdmin = (req, id) =>
   req.user._id.toString() === id || req.user.role === "admin";
 
-const deleteFromCloudinary = async (publicId) => {
-  if (publicId) await cloudinary.uploader.destroy(publicId);
-};
-
 const register = async (req, res, next) => {
   try {
     const { name, email, password } = req.body;
 
     const missingFields = ["name", "email", "password"].filter((f) => !req.body[f]);
     if (missingFields.length > 0) {
-      await deleteFromCloudinary(req.file?.filename);
+      await removeFromCloudinary(req.file?.filename);
       return res.status(400).json({ error: `Faltan los siguientes campos: ${missingFields.join(", ")}` });
     }
     if (password.length < 6) {
-      await deleteFromCloudinary(req.file?.filename);
+      await removeFromCloudinary(req.file?.filename);
       return res.status(400).json({ error: "La contraseña debe tener al menos 6 caracteres" });
     }
 
@@ -43,7 +39,7 @@ const register = async (req, res, next) => {
 
     res.status(201).json(withoutPassword(user));
   } catch (error) {
-    await deleteFromCloudinary(req.file?.filename);
+    await removeFromCloudinary(req.file?.filename);
     if (error.code === 11000) {
       return res.status(400).json({ error: "Ese email ya está registrado" });
     }
@@ -107,13 +103,13 @@ const updateUser = async (req, res, next) => {
     const { id } = req.params;
 
     if (!isOwnerOrAdmin(req, id)) {
-      await deleteFromCloudinary(req.file?.filename);
+      await removeFromCloudinary(req.file?.filename);
       return res.status(403).json({ error: "No tienes permiso para editar esta cuenta" });
     }
 
     const user = await User.findById(id);
     if (!user) {
-      await deleteFromCloudinary(req.file?.filename);
+      await removeFromCloudinary(req.file?.filename);
       return res.status(404).json({ error: "Usuario no encontrado" });
     }
 
@@ -121,16 +117,17 @@ const updateUser = async (req, res, next) => {
     if (name) user.name = name;
     if (email) user.email = email;
 
+    const oldImagePublicId = user.imagePublicId;
     if (req.file) {
-      await deleteFromCloudinary(user.imagePublicId);
       user.image = req.file.path;
       user.imagePublicId = req.file.filename;
     }
 
     await user.save();
+    if (req.file) await removeFromCloudinary(oldImagePublicId);
     res.json(withoutPassword(user));
   } catch (error) {
-    await deleteFromCloudinary(req.file?.filename);
+    await removeFromCloudinary(req.file?.filename);
     if (error.code === 11000) {
       return res.status(400).json({ error: "Ese email ya está registrado" });
     }
@@ -207,7 +204,7 @@ const deleteUser = async (req, res, next) => {
     const user = await User.findById(id);
     if (!user) return res.status(404).json({ error: "Usuario no encontrado" });
 
-    await deleteFromCloudinary(user.imagePublicId);
+    await removeFromCloudinary(user.imagePublicId);
 
     await user.deleteOne();
     res.json({ message: "Cuenta eliminada correctamente" });

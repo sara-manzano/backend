@@ -29,6 +29,12 @@ const createAdmin = async () => {
 
 const run = async () => {
   try {
+    const { name, email, password } = ADMIN_DATA;
+    if (!name || !email || !password) {
+      console.error("[seed:admin] Faltan variables de entorno: ADMIN_NAME, ADMIN_EMAIL y ADMIN_PASSWORD son obligatorias");
+      process.exit(1);
+    }
+
     await connectDB();
     console.log("[seed:admin] Conectado a MongoDB");
 

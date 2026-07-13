@@ -17,7 +17,7 @@ cd backend
 npm install
 ```
 
-Crea un `.env` en la raíz:
+Crea un `.env` en la raíz. Necesitas una cuenta en [MongoDB Atlas](https://www.mongodb.com/cloud/atlas) y en [Cloudinary](https://cloudinary.com):
 
 ```env
 PORT=3000
@@ -26,60 +26,128 @@ CLOUDINARY_CLOUD_NAME=tu_cloud_name
 CLOUDINARY_API_KEY=tu_api_key
 CLOUDINARY_API_SECRET=tu_api_secret
 JWT_SECRET=una_cadena_secreta_cualquiera
+
+# Solo se usan al crear el primer admin
+ADMIN_NAME=Admin
+ADMIN_EMAIL=admin@ejemplo.com
+ADMIN_PASSWORD=contraseña_segura
 ```
 
-Si quieres cargar películas de prueba:
+Si quieres tener películas de prueba desde el principio:
 
 ```bash
 npm run seed
 ```
 
-Para crear el primer admin:
+Antes de usar la app necesitas al menos un admin. Créalo así:
 
 ```bash
-node src/seeds/admin.seed.js
+npm run seed:admin
 ```
 
-Para arrancar:
+Y para arrancar en modo desarrollo:
 
 ```bash
 npm run dev
 ```
 
-## Rutas
+## Autenticación
 
-Las rutas protegidas necesitan el token en el header:
+El login devuelve un token JWT que caduca a los 30 días. Las rutas protegidas lo esperan en el header:
 
 ```
 Authorization: Bearer <token>
 ```
 
+## Rutas
+
 ### Usuarios
 
 | Método | Ruta | Auth | Descripción |
 |--------|------|------|-------------|
-| POST | `/api/register` | — | Registro. Acepta `multipart/form-data` si quieres subir foto. |
-| POST | `/api/login` | — | Login. Devuelve token + datos del usuario. |
-| GET | `/api/users` | admin | Lista todos los usuarios. Paginación: `?page=1&limit=20`. |
-| GET | `/api/users/profile` | token | Perfil del usuario logueado con sus favoritos. |
-| PUT | `/api/users/:id` | token | Actualiza nombre, email o imagen de perfil. |
-| PUT | `/api/users/add-favorite/:idData` | token | Añade una película a favoritos (sin duplicados). |
-| DELETE | `/api/users/remove-favorite/:idData` | token | Quita una película de favoritos. |
-| DELETE | `/api/users/:id` | token | Borra cuenta. Cada usuario puede borrar la suya; los admins pueden borrar cualquiera. |
+| POST | `/api/register` | — | Crea una cuenta nueva. Acepta imagen de perfil. |
+| POST | `/api/login` | — | Inicia sesión. Devuelve el token y los datos del usuario. |
+| GET | `/api/users` | admin | Lista todos los usuarios con paginación. |
+| GET | `/api/users/profile` | token | Devuelve el perfil del usuario autenticado con sus favoritos. |
+| PUT | `/api/users/:id` | owner o admin | Actualiza nombre, email o imagen de perfil. |
+| PUT | `/api/users/add-favorite/:idData` | token | Añade una película a favoritos (no se duplican). |
 | PUT | `/api/users/:id/role` | admin | Cambia el rol de un usuario (`"user"` o `"admin"`). |
+| DELETE | `/api/users/remove-favorite/:idData` | token | Elimina una película de favoritos. |
+| DELETE | `/api/users/:id` | owner o admin | Elimina la cuenta. |
 
 ### Películas
 
 | Método | Ruta | Auth | Descripción |
 |--------|------|------|-------------|
-| GET | `/api/movies` | — | Lista películas. Paginación: `?page=1&limit=20`. |
-| GET | `/api/movies/:id` | — | Una película por ID. |
-| POST | `/api/movies` | admin | Crea película. Solo `title` es obligatorio. |
-| PUT | `/api/movies/:id` | admin | Actualiza película. |
-| DELETE | `/api/movies/:id` | admin | Elimina película. |
+| GET | `/api/movies` | — | Lista películas con paginación. |
+| GET | `/api/movies/:id` | — | Devuelve una película por ID. |
+| POST | `/api/movies` | admin | Crea una película nueva. Solo `title` es obligatorio. |
+| PUT | `/api/movies/:id` | admin | Actualiza una película. |
+| DELETE | `/api/movies/:id` | admin | Elimina una película. |
 
-## Notas
+Los endpoints paginados aceptan `?page=1&limit=20` y devuelven:
 
-- Las imágenes de perfil se suben a Cloudinary y se eliminan automáticamente al actualizar o borrar la cuenta.
-- Los tokens caducan a los 30 días.
-- El `.env` nunca se sube al repositorio. Usa `.env` como plantilla para configurar tu entorno.
+```json
+{
+  "data": [...],
+  "page": 1,
+  "limit": 20,
+  "total": 100,
+  "pages": 5
+}
+```
+
+## Qué se envía en cada petición
+
+### Registro — `POST /api/register`
+
+Enviar como `multipart/form-data`:
+
+| Campo | Tipo | Requerido |
+|-------|------|-----------|
+| `name` | string | sí |
+| `email` | string | sí |
+| `password` | string (mín. 6 caracteres) | sí |
+| `image` | jpg / png / webp (máx. 2 MB) | no |
+
+### Login — `POST /api/login`
+
+Enviar como `application/json`:
+
+| Campo | Tipo | Requerido |
+|-------|------|-----------|
+| `email` | string | sí |
+| `password` | string | sí |
+
+### Actualizar perfil — `PUT /api/users/:id`
+
+Enviar como `multipart/form-data`. Manda solo los campos que quieras cambiar:
+
+| Campo | Tipo |
+|-------|------|
+| `name` | string |
+| `email` | string |
+| `image` | jpg / png / webp (máx. 2 MB) |
+
+### Crear o actualizar película — `POST /api/movies` y `PUT /api/movies/:id`
+
+Enviar como `application/json`. Solo `title` es obligatorio (y solo en el POST):
+
+| Campo | Tipo |
+|-------|------|
+| `title` | string |
+| `plot` | string |
+| `fullplot` | string |
+| `genres` | string[] |
+| `runtime` | number |
+| `cast` | string[] |
+| `poster` | string (URL) |
+| `directors` | string[] |
+| `writers` | string[] |
+| `year` | number |
+| `languages` | string[] |
+| `countries` | string[] |
+| `released` | date |
+| `imdb` | `{ rating, votes, id }` |
+| `awards` | `{ wins, nominations, text }` |
+
